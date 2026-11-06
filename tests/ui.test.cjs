@@ -10,6 +10,9 @@ if(!process.versions.electron){
   app.setPath('userData',path.resolve(__dirname,'../.qa/electron'));
   const origin='https://bescumcfyltymxlkbhqw.supabase.co';
   let server,win,issued=[],requests=[],holdList=false,releaseList=null,failIssue=false,deny=false,listCalls=0,errors=[];
+  const crypto=require('node:crypto'),pair=crypto.generateKeyPairSync('ed25519'),trust={keyId:'fixture',repository:'strata6/pavio-releases',publicKey:pair.publicKey.export({format:'der',type:'spki'}).toString('base64')};
+  const payload=JSON.stringify({schema:1,version:'2.0.0-beta.16',channel:'beta',platform:'win32-x64',url:'https://github.com/strata6/pavio-releases/releases/download/v2.0.0-beta.16/Pavio-Setup-2.0.0-beta.16-x64.exe',size:1234567,sha256:'a'.repeat(64),sha512:Buffer.alloc(64).toString('base64'),notes:'Offline fixture release',createdAt:'2026-11-06T12:00:00Z'}),envelope={keyId:'fixture',payload,signature:crypto.sign(null,Buffer.from(payload),pair.privateKey).toString('base64')};
+  let updateFeed={revision:crypto.randomUUID(),manifest:null,published_at:null},failPublish=true,publications=0;
   const wait=ms=>new Promise(r=>setTimeout(r,ms));
   const run=code=>win.webContents.executeJavaScript(code,true);
   const ready=async(code)=>{for(let i=0;i<100;i++){if(await run(code))return;await wait(30);}throw Error('Timed out: '+code);};
@@ -27,6 +30,11 @@ if(!process.versions.electron){
       if(req.url.includes('/token'))return reply({access_token:'fixture',refresh_token:'fixture-refresh',expires_at:Date.now()/1000+3600,user:{id:'fixture',app_metadata:{application:'vex',username:'fixture'}}});
       if(req.url.includes('/logout'))return reply(null,204);
       requests.push(body);
+      if(req.url.includes('pavio_update_admin')){
+        if(body.p_action==='status')return reply(updateFeed);
+        if(updateFeed.revision!==body.p_request){if(body.p_expected!==updateFeed.revision)return reply({error:'release_changed'});updateFeed={revision:body.p_request,manifest:body.p_manifest,published_at:new Date().toISOString()};publications++;}
+        if(failPublish){failPublish=false;return reply({},503);}return reply(updateFeed);
+      }
       if(body.p_action==='status')return reply(deny?{error:'forbidden'}:{admin:true,username:'fixture'});
       if(body.p_action==='list'){
         listCalls++;const rows=snapshotRows();
@@ -44,7 +52,8 @@ if(!process.versions.electron){
     });
     server=http.createServer(async(req,res)=>{
       const file=new URL(req.url,'http://fixture').pathname.slice(1)||'index.html';
-      if(!['index.html','style.css','client.mjs','app.mjs','logo.png'].includes(file)){res.writeHead(404).end();return;}
+      if(file==='update-trust.json'){res.writeHead(200,{'Content-Type':'application/json'}).end(JSON.stringify(trust));return;}
+      if(!['index.html','style.css','client.mjs','app.mjs','logo.png','updates-ui.mjs','release-format.mjs'].includes(file)){res.writeHead(404).end();return;}
       const body=await fs.readFile(path.join(__dirname,'..',file));
       res.writeHead(200,{'Content-Type':file.endsWith('.mjs')?'text/javascript':file.endsWith('.css')?'text/css':file.endsWith('.png')?'image/png':'text/html'}).end(body);
     });
@@ -80,6 +89,13 @@ if(!process.versions.electron){
     assert.equal(await run(`document.getElementById('new-code').value`),'');assert.equal(await run(`document.querySelectorAll('#history-rows tr').length`),0);
     await login();await ready(`document.querySelectorAll('#history-rows tr').length===2`);releaseList();await wait(100);report('sign-out clears data; stale history cannot block a new session');
     assert.equal(await run(`localStorage.length+sessionStorage.length`),0);report('no password, code, or token persistence');
+    await ready(`!document.getElementById('update-refresh').disabled`);
+    const selectFile=async e=>run(`{const d=new DataTransfer();d.items.add(new File([${JSON.stringify(JSON.stringify(e))}],'fixture.pavioupdate',{type:'application/json'}));const f=document.getElementById('release-file');f.files=d.files;f.dispatchEvent(new Event('change'));}`);
+    await selectFile({...envelope,payload:payload+' '});await ready(`document.getElementById('release-status').textContent.includes('signature did not match')`);assert.equal(await run(`document.getElementById('update-publish').disabled`),true);report('tampered release cannot be published');
+    await selectFile(envelope);await ready(`!document.getElementById('update-publish').disabled`);
+    await run('window.confirm=()=>true;void 0');await click('update-publish');await ready(`!document.getElementById('update-retry').hidden&&!document.getElementById('update-retry').disabled`);
+    assert.equal(publications,1);await click('update-retry');await ready(`document.getElementById('release-status').textContent.startsWith('Published.')`);assert.equal(publications,1);report('lost publication reply reuses the same request and signed release');
+    await click('update-withdraw');await ready(`document.getElementById('release-status').textContent.startsWith('Withdrawn.')`);assert.equal(updateFeed.manifest,null);report('owner can withdraw a published release');
     win.setContentSize(390,844);await wait(150);
     await fs.writeFile(path.join(__dirname,'../.qa/dashboard-mobile.png'),(await win.webContents.capturePage()).toPNG());
     assert.equal(await run(`document.documentElement.scrollWidth<=innerWidth`),true,await run(`JSON.stringify({width:innerWidth,overflow:[...document.querySelectorAll('body *')].filter(e=>e.getBoundingClientRect().right>innerWidth).map(e=>({tag:e.tagName,id:e.id,cls:e.className,right:e.getBoundingClientRect().right})).slice(0,20)})`));

@@ -2,12 +2,23 @@
 
 Website: https://strata6.github.io/pavio-code-studio/
 
-An owner-authenticated dashboard for Pavio activation codes. The public page
+An owner-authenticated dashboard for Pavio activation codes and signed remote updates. The public page
 does not grant access: sign in with an authorized Vex account to issue codes,
 review status, and revoke unused codes. Ordinary Vex accounts are denied by
 server-side permission checks.
 
 ## Hosting
+
+## Updates (Code Studio 1.1.0)
+
+Sign in, expand **Updates**, and import a signed `.pavioupdate` descriptor to
+publish a prepared release. The same owner allowlist controls publishing and
+withdrawal. See [the complete release guide](UPDATES.md). Installers are hosted
+in `strata6/pavio-releases`; only the public verification key is included here.
+The private application repository, signing key, and GitHub credentials stay out
+of this website. Beta.14 portable copies need a one-time installer upgrade.
+
+## Hosting details
 
 This repository contains only the static website. GitHub Pages publishes the
 root of the `main` branch. Relative asset URLs support the repository subpath.

@@ -9,8 +9,8 @@ export class StudioClient{
   // Native Window.fetch rejects a StudioClient receiver (Illegal invocation).
   constructor(fetchImpl=globalThis.fetch){this.fetch=fetchImpl.bind(globalThis);this.session=null;this.epoch=0;this.refreshing=null;}
   async request(path,body,token){
-    const operation=path.includes('grant_type=password')?'Sign-in':path.includes('grant_type=refresh_token')?'Session refresh':body?.p_action==='issue'?'Code generation':body?.p_action==='list'?'Code history':body?.p_action==='revoke'?'Code revocation':'Account connection';
-    const retryHint=body?.p_action==='issue'?' Check the same generation before creating another.':' Check your connection and try again.';
+    const operation=path.includes('pavio_update_admin')?'Update publication':path.includes('grant_type=password')?'Sign-in':path.includes('grant_type=refresh_token')?'Session refresh':body?.p_action==='issue'?'Code generation':body?.p_action==='list'?'Code history':body?.p_action==='revoke'?'Code revocation':'Account connection';
+    const retryHint=body?.p_action==='issue'?' Check the same generation before creating another.':path.includes('pavio_update_admin')?' Refresh or retry the same update operation.':' Check your connection and try again.';
     let response;try{response=await this.fetch(origin+path,{method:'POST',credentials:'omit',cache:'no-store',headers:{apikey:key,'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},body:JSON.stringify(body),signal:AbortSignal.timeout(20000)});}catch(cause){
       const binding=/illegal invocation/i.test(cause?.message||'');
       const timeout=cause?.name==='TimeoutError'||cause?.name==='AbortError';
@@ -37,6 +37,6 @@ export class StudioClient{
     const job=(async()=>{const data=await this.request('/auth/v1/token?grant_type=refresh_token',{refresh_token:refresh});if(epoch!==this.epoch)throw Error('Account changed.');const next=this.compact(data);if(next.uid!==uid)throw Error('Account changed.');this.session=next;return next.token;})();this.refreshing=job;
     try{return await job;}finally{if(this.refreshing===job)this.refreshing=null;}
   }
-  async rpc(body){const epoch=this.epoch,token=await this.token();if(epoch!==this.epoch)throw Error('Account changed.');const data=await this.request('/rest/v1/rpc/pavio_code_studio',body,token);if(epoch!==this.epoch)throw Error('Account changed.');if(!data||typeof data!=='object')throw Object.assign(Error('The operation could not be confirmed.'),{uncertain:true});if(data.error)throw Object.assign(Error(errors[data.error]||'The operation was not authorized.'),{code:data.error});return data;}
+  async rpc(body,endpoint='pavio_code_studio'){if(!['pavio_code_studio','pavio_update_admin'].includes(endpoint))throw Error('Unknown owner operation.');const epoch=this.epoch,token=await this.token();if(epoch!==this.epoch)throw Error('Account changed.');const data=await this.request('/rest/v1/rpc/'+endpoint,body,token);if(epoch!==this.epoch)throw Error('Account changed.');if(!data||typeof data!=='object')throw Object.assign(Error('The operation could not be confirmed.'),{uncertain:true});if(data.error)throw Object.assign(Error(data.error==='release_changed'?'The published release changed. Refresh before publishing again.':errors[data.error]||'The operation was not authorized.'),{code:data.error});return data;}
   async signOut(){const token=this.session?.token;this.epoch++;this.session=null;this.refreshing=null;if(token)try{await this.request('/auth/v1/logout?scope=local',{},token);}catch{} }
 }
