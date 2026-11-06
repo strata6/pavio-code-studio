@@ -38,3 +38,17 @@ needed. The previous private-hosted copy is separate and unchanged.
 
 Listed prices describe the plans. Code generation itself does not charge a
 payment method. License issuance is restricted to the configured owner.
+
+## Verification / 1.0.1
+
+The 1.0.1 patch fixes a browser-only `fetch` receiver error that prevented
+requests from leaving the page. It also labels sign-in, history, generation,
+and timeout errors separately, while preserving same-request issuance retries.
+
+- `node --test tests/client.test.mjs` runs transport and client regression tests.
+- `node tests/native-fetch.test.cjs` tests the real Chromium `Window.fetch`.
+- `node tests/ui.test.cjs` tests the full UI with native browser fetch and an
+  isolated protocol handler. Neither browser suite contacts real accounts.
+
+Browser tests use `PAVIO_ELECTRON_PATH` or the existing sibling Pavio development
+dependency. Screenshots and temporary profiles stay in ignored `.qa/`.

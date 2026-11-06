@@ -6,12 +6,19 @@ export async function hashCode(code){return [...new Uint8Array(await crypto.subt
 export const formatCode=code=>code.match(/.{4}/g).join('-');
 const errors={forbidden:'This Vex account is not authorized to create codes.',session:'Your Vex session has ended. Sign in again.',parameters:'The code settings are invalid.',request_conflict:'This request was already used with different settings. No second code was created.',rate_limit:'The account has reached 100 codes this hour. Try again later.',code_collision:'A code conflict occurred. Clear this generation and create a new code.',already_redeemed:'This code was already redeemed. It cannot be revoked here.',not_found:'That code was not found.'};
 export class StudioClient{
-  constructor(fetchImpl=fetch){this.fetch=fetchImpl;this.session=null;this.epoch=0;this.refreshing=null;}
+  // Native Window.fetch rejects a StudioClient receiver (Illegal invocation).
+  constructor(fetchImpl=globalThis.fetch){this.fetch=fetchImpl.bind(globalThis);this.session=null;this.epoch=0;this.refreshing=null;}
   async request(path,body,token){
-    let response;try{response=await this.fetch(origin+path,{method:'POST',credentials:'omit',cache:'no-store',headers:{apikey:key,'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},body:JSON.stringify(body),signal:AbortSignal.timeout(20000)});}catch{throw Object.assign(Error('Connection interrupted. If you were generating a code, check the same generation before creating another.'),{uncertain:true});}
+    const operation=path.includes('grant_type=password')?'Sign-in':path.includes('grant_type=refresh_token')?'Session refresh':body?.p_action==='issue'?'Code generation':body?.p_action==='list'?'Code history':body?.p_action==='revoke'?'Code revocation':'Account connection';
+    const retryHint=body?.p_action==='issue'?' Check the same generation before creating another.':' Check your connection and try again.';
+    let response;try{response=await this.fetch(origin+path,{method:'POST',credentials:'omit',cache:'no-store',headers:{apikey:key,'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{})},body:JSON.stringify(body),signal:AbortSignal.timeout(20000)});}catch(cause){
+      const binding=/illegal invocation/i.test(cause?.message||'');
+      const timeout=cause?.name==='TimeoutError'||cause?.name==='AbortError';
+      throw Object.assign(Error(binding?'The browser request could not start. Reload the updated page and try again.':operation+(timeout?' timed out after 20 seconds.':' could not reach the server.')+retryHint),{uncertain:!binding,code:binding?'browser_request':timeout?'timeout':'network'});
+    }
     // GoTrue logout returns 204, which has no JSON body.
     if(response.status===204)return {};
-    let data;try{data=await response.json();}catch{throw Object.assign(Error('The server response could not be read. Check the same generation before creating another.'),{uncertain:true});}
+    let data;try{data=await response.json();}catch{throw Object.assign(Error(operation+' returned an unreadable response.'+retryHint),{uncertain:true,code:'response'});}
     if(!response.ok)throw Object.assign(Error(response.status===429?'Too many requests. Please wait.':response.status===400&&path.startsWith('/auth/')?'Sign-in failed. Check your Vex username and password.':response.status===401?'Your session or sign-in is invalid. Sign in again.':'The server could not confirm this operation.'),{status:response.status,uncertain:response.status>=500});
     return data;
   }

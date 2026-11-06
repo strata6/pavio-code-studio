@@ -1,4 +1,4 @@
-import {StudioClient,plans,generateCode,hashCode,formatCode} from './client.mjs';
+import {StudioClient,plans,generateCode,hashCode,formatCode} from './client.mjs?v=1.0.1';
 const $=id=>document.getElementById(id),client=new StudioClient();
 let owner=null,pending=null,freshCode=null,busy=false,historyJob=null,historyRefreshQueued=false,rows=[],cursor=null,revokeTarget=null,uiEpoch=0;
 const date=v=>new Date(v).toLocaleDateString(undefined,{year:'numeric',month:'short',day:'numeric'});
